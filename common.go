@@ -210,6 +210,23 @@ type ClientSessionCache interface {
 	Put(sessionKey string, cs *ClientSessionState)
 }
 
+type ServerSessionState struct {
+	vers				uint16
+	cipherSuite			uint16
+	masterSecret		[]byte
+	serverCertificates	[][]byte
+}
+
+type ServerSessionCache interface {
+	// Get searches for a ServerSessionState associated with the given key.
+	// On return, ok is true if one was found.
+	Get(sessionId []byte) (session *ServerSessionState, ok bool)
+
+	// Put adds the ServerSessionState to the cache with the given key.
+	Put(sessionId []byte, ss *ServerSessionState)
+
+}
+
 // ClientHelloInfo contains information from a ClientHello message in order to
 // guide certificate selection in the GetCertificate callback.
 type ClientHelloInfo struct {
@@ -325,9 +342,13 @@ type Config struct {
 	// connections using that key are compromised.
 	SessionTicketKey [32]byte
 
-	// SessionCache is a cache of ClientSessionState entries for TLS session
+	// ClientSessionCache is a cache of ClientSessionState entries for TLS session
 	// resumption.
 	ClientSessionCache ClientSessionCache
+
+	// ServerSessionCache is a cache of ServerSessionState entries for TLS session
+	// resumption.
+	ServerSessionCache ServerSessionCache
 
 	// MinVersion contains the minimum SSL/TLS version that is acceptable.
 	// If zero, then SSLv3 is taken as the minimum.

@@ -67,6 +67,12 @@ func (c *Conn) serverHandshake() error {
 	} else {
 		// The client didn't include a session ticket, or it wasn't
 		// valid so we do a full handshake.
+		if c.config.ServerSessionCache != nil {
+			id, err := c.config.ServerSessionCache.GenerateId()
+			if err == nil {
+				hs.hello.sessionId = id
+			}
+		}
 		if err := hs.doFullHandshake(); err != nil {
 			return err
 		}
@@ -78,6 +84,14 @@ func (c *Conn) serverHandshake() error {
 		}
 		if err := hs.sendSessionTicket(); err != nil {
 			return err
+		}
+		if c.config.ServerSessionCache != nil {
+			c.config.ServerSessionCache.Put(hs.hello.sessionId, &ServerSessionState {
+				vers: c.vers,
+				cipherSuite: hs.suite.id,
+				masterSecret: hs.masterSecret,
+				certificates: hs.certsFromClient,
+			})
 		}
 		if err := hs.sendFinished(nil); err != nil {
 			return err
@@ -243,13 +257,29 @@ Curves:
 func (hs *serverHandshakeState) checkForResumption() bool {
 	c := hs.c
 
-	if c.config.SessionTicketsDisabled {
+	found := false
+	if c.config.ServerSessionCache != nil && len(hs.clientHello.sessionId) > 0 {
+		session, ok := c.config.ServerSessionCache.Get(hs.clientHello.sessionId)
+		if ok {
+			found = true
+			hs.sessionState = &sessionState{
+				vers: session.vers,
+				cipherSuite: session.cipherSuite,
+				masterSecret: session.masterSecret,
+				certificates: session.certificates,
+			}
+		}
+	}
+
+	if !found && c.config.SessionTicketsDisabled {
 		return false
 	}
 
-	var ok bool
-	if hs.sessionState, ok = c.decryptTicket(hs.clientHello.sessionTicket); !ok {
-		return false
+	if !found {
+		var ok bool
+		if hs.sessionState, ok = c.decryptTicket(hs.clientHello.sessionTicket); !ok {
+			return false
+		}
 	}
 
 	if hs.sessionState.vers > hs.clientHello.vers {

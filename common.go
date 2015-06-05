@@ -5,10 +5,12 @@
 package tls
 
 import (
+	"bytes"
 	"container/list"
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/gob"
 	"fmt"
 	"io"
 	"math/big"
@@ -214,7 +216,38 @@ type ServerSessionState struct {
 	vers				uint16
 	cipherSuite			uint16
 	masterSecret		[]byte
-	serverCertificates	[][]byte
+	certificates		[][]byte
+}
+func (ss *ServerSessionState) GobEncode() ([]byte, error) {
+	w := new(bytes.Buffer)
+	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(ss.vers); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(ss.cipherSuite); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(ss.masterSecret); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(ss.certificates); err != nil {
+		return nil, err
+	}
+	return w.Bytes(), nil
+}
+func (ss *ServerSessionState) GobDecode(buf []byte) error {
+	r := bytes.NewBuffer(buf)
+	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&ss.vers); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&ss.cipherSuite); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&ss.masterSecret); err != nil {
+		return err
+	}
+	return decoder.Decode(&ss.certificates)
 }
 
 type ServerSessionCache interface {
@@ -225,6 +258,9 @@ type ServerSessionCache interface {
 	// Put adds the ServerSessionState to the cache with the given key.
 	Put(sessionId []byte, ss *ServerSessionState)
 
+	// GenerateId generates session IDs.  Maybe not recommended, but
+	// this allows one to encode some state into the IDs if desired
+	GenerateId() ([]byte, error)
 }
 
 // ClientHelloInfo contains information from a ClientHello message in order to
